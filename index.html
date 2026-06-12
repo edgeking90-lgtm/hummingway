@@ -1,0 +1,1579 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Melody Sketch — 음 후보 확인</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0f0f0f; color: #e0e0e0;
+    font-family: 'Consolas','Menlo',monospace;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 16px 10px; gap: 10px; min-height: 100vh;
+    width: 100%; max-width: 860px; margin: 0 auto; box-sizing: border-box;
+  }
+  h1 { font-size: 13px; color: #555; letter-spacing: 0.08em; }
+
+  .dropzone {
+    width: 100%; border: 2px dashed #2a2a2a; border-radius: 8px;
+    padding: 16px 0; text-align: center; color: #444;
+    font-size: 13px; cursor: pointer; user-select: none;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .dropzone:hover, .dropzone.drag-over { border-color: #4a9edd; color: #4a9edd; }
+  #fileInput { display: none; }
+
+  .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .layer-btn {
+    padding: 9px 14px; border-radius: 5px; border: 1px solid #333;
+    background: #1a1a1a; color: #555; font-family: inherit;
+    font-size: 12px; cursor: pointer; transition: all 0.12s;
+    touch-action: manipulation; min-height: 38px;
+  }
+  .layer-btn:hover { background: #222; }
+  .layer-btn.on-raw    { border-color: #555;    color: #888;    background: #1e1e1e; }
+  .layer-btn.on-clean  { border-color: #c89030; color: #c8a050; background: #1e1800; }
+  .layer-btn.on-smooth { border-color: #4a9edd; color: #7ec8f7; background: #0a1e30; }
+  .layer-btn.on-ghost  { border-color: #cc4444; color: #ee8888; background: #200a0a; }
+  .layer-btn.on-notes  { border-color: #7a6a3a; color: #c8b060; background: #181408; }
+
+  .divider { width: 1px; height: 16px; background: #222; }
+  .status { font-size: 11px; color: #444; }
+  .status.busy { color: #7ec8f7; }
+  .status.done { color: #80e0a0; }
+  .status.err  { color: #f09090; }
+
+  .canvas-wrap { background: #141414; border: 1px solid #222; border-radius: 8px; overflow: hidden; width: 100%; }
+  canvas { display: block; }
+
+  .note-strip {
+    width: 100%; background: #111; border: 1px solid #1e1e1e;
+    border-radius: 6px; padding: 10px 14px;
+    font-size: 11px; color: #444; line-height: 1.9; min-height: 36px;
+  }
+  .note-tag {
+    display: inline-block; padding: 1px 8px; margin: 2px 3px 2px 0;
+    border-radius: 3px; background: rgba(200,150,40,0.15);
+    border: 1px solid rgba(200,150,40,0.25); color: #c8a050; font-size: 11px;
+  }
+  .note-tag.short { opacity: 0.5; }
+
+  .stats-bar { width: 100%; display: flex; gap: 20px; font-size: 11px; color: #333; padding: 0 4px; }
+  .stat-raw    { color: #555; }
+  .stat-clean  { color: #906820; }
+  .stat-smooth { color: #2a6a9a; }
+  .stat-notes  { color: #706030; }
+
+  .legend {
+    display: flex; gap: 16px; align-items: center;
+    font-size: 11px; color: #555; flex-wrap: wrap; justify-content: center;
+  }
+  .legend-item { display: flex; align-items: center; gap: 5px; }
+  .sw-line { width: 22px; height: 2px; border-radius: 1px; }
+  .sw-dot  { width: 7px; height: 7px; border-radius: 50%; }
+  .sw-box  { width: 14px; height: 10px; border-radius: 2px; border: 1px solid; }
+
+  .play-btn {
+    padding: 9px 14px; border-radius: 5px; border: 1px solid #333;
+    background: #1a1a1a; color: #555; font-family: inherit;
+    font-size: 12px; cursor: pointer; transition: all 0.12s;
+    touch-action: manipulation; min-height: 38px;
+  }
+  .play-btn:hover:not(:disabled) { background: #222; color: #888; }
+  .play-btn:disabled { opacity: 0.3; cursor: default; }
+  .play-btn.active-orig  { border-color: #2a6a4a; color: #60c090; background: #0a1e14; }
+  .play-btn.active-notes { border-color: #7a6a3a; color: #c8b060; background: #181408; }
+  .play-btn.stop-btn     { border-color: #6a2a2a; color: #c06060; background: #1e0a0a; }
+
+  .rec-btn {
+    padding: 9px 16px; border-radius: 5px; border: 1px solid #4a1a1a;
+    background: #1e0a0a; color: #c06060; font-family: inherit;
+    font-size: 12px; cursor: pointer; transition: all 0.12s; white-space: nowrap;
+    touch-action: manipulation;
+  }
+  .rec-btn.recording {
+    border-color: #cc3333; color: #ff7070; background: #2e0a0a;
+    animation: rec-pulse 1s ease-in-out infinite;
+  }
+  @keyframes rec-pulse { 0%,100%{opacity:1} 50%{opacity:0.45} }
+  .save-btn {
+    padding: 9px 16px; border-radius: 5px; border: 1px solid #1a3a2a;
+    background: #0a1e14; color: #50a070; font-family: inherit;
+    font-size: 12px; cursor: pointer; transition: all 0.12s; white-space: nowrap;
+    touch-action: manipulation;
+  }
+  .save-btn:hover:not(:disabled) { background: #0e2a1c; color: #70c090; }
+  .save-btn:disabled { opacity: 0.28; cursor: default; }
+
+  .layer-btn.on-band-low  { border-color: #2a5a2a; color: #40c060; background: #0a180a; }
+  .layer-btn.on-band-mid  { border-color: #5a2a8a; color: #a060e0; background: #10081e; }
+  .layer-btn.on-band-high { border-color: #7a4a10; color: #e09040; background: #180e04; }
+
+  .band-btn {
+    padding: 8px 10px; border-radius: 4px; border: 1px solid #252525;
+    background: #141414; color: #444; font-family: inherit;
+    font-size: 11px; cursor: pointer; transition: all 0.12s;
+    touch-action: manipulation; min-height: 34px;
+  }
+  .band-btn:hover:not(:disabled) { background: #1e1e1e; color: #666; }
+  .band-btn:disabled { opacity: 0.3; cursor: default; }
+  .band-btn.bp-active { border-color: #3a5a3a; color: #60b070; background: #0a140a; }
+  .vol-row { display: flex; align-items: center; gap: 6px; }
+  .vol-lbl { font-size: 10px; color: #333; display:flex; align-items:center; gap:3px; letter-spacing:.04em; }
+  .vol-slider { width: 60px; cursor: pointer; accent-color: #404040; }
+  .band-section-label { font-size: 10px; color: #2a2a2a; letter-spacing: 0.08em; }
+</style>
+</head>
+<body>
+
+<h1>Melody Sketch — 음 후보 확인</h1>
+
+<div style="display:flex; gap:10px; align-items:stretch; width:100%;">
+  <div class="dropzone" id="dropzone" style="flex:1;">
+    <span>MP3 / WAV 파일을 여기에 드래그하거나 클릭하세요</span>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:6px;">
+    <button class="rec-btn"  id="btnRecord">● 녹음</button>
+    <button class="play-btn" id="btnPlayHum" disabled>▶ 허밍</button>
+    <button class="save-btn" id="btnSaveWav" disabled>↓ WAV</button>
+  </div>
+</div>
+<input type="file" id="fileInput" accept="audio/*">
+
+<div class="controls">
+  <button class="layer-btn on-raw"       id="btnRaw">raw</button>
+  <button class="layer-btn on-clean"     id="btnClean">clean</button>
+  <button class="layer-btn on-smooth"    id="btnSmooth">smooth</button>
+  <button class="layer-btn on-ghost"     id="btnGhost">잔상</button>
+  <button class="layer-btn on-notes"     id="btnNotes">음 후보</button>
+  <div class="divider"></div>
+  <button class="layer-btn on-band-low"  id="btnBandLow">Low</button>
+  <button class="layer-btn on-band-mid"  id="btnBandMid">Mid</button>
+  <button class="layer-btn on-band-high" id="btnBandHigh">High</button>
+  <div class="divider"></div>
+  <span class="status" id="status">파일을 업로드하세요</span>
+</div>
+
+<div class="controls">
+  <button class="play-btn" id="btnPlayOrig"   disabled>▶ 원본</button>
+  <button class="play-btn" id="btnPlayClean"  disabled>▶ clean</button>
+  <button class="play-btn" id="btnPlaySmooth" disabled>▶ smooth</button>
+  <button class="play-btn" id="btnPlayNotes"  disabled>▶ 음 후보</button>
+  <button class="play-btn" id="btnPlayBoth"   disabled>▶ 동시</button>
+  <button class="play-btn stop-btn" id="btnStop" disabled>■ 정지</button>
+  <div class="divider"></div>
+  <button class="play-btn" id="btnTest">440Hz 테스트</button>
+</div>
+
+<div class="controls" style="gap:8px;">
+  <span class="band-section-label">BAND</span>
+  <div class="vol-row">
+    <label class="vol-lbl">L<input type="range" id="volLow"   min="0" max="100" value="70" class="vol-slider"></label>
+    <label class="vol-lbl">M<input type="range" id="volMid"   min="0" max="100" value="70" class="vol-slider"></label>
+    <label class="vol-lbl">H<input type="range" id="volHigh"  min="0" max="100" value="70" class="vol-slider"></label>
+    <div class="divider"></div>
+    <label class="vol-lbl" style="color:#5a4a2a;">Blur<input type="range" id="blurDepth" min="0" max="100" value="0"  class="vol-slider" style="width:64px;accent-color:#7a6030;"></label>
+    <label class="vol-lbl" style="color:#5a4a2a;">Time<input type="range" id="blurTime"  min="5" max="100" value="40" class="vol-slider" style="width:64px;accent-color:#7a6030;"></label>
+  </div>
+  <div class="divider"></div>
+  <button class="band-btn" id="bpLow"  disabled>▶ Low</button>
+  <button class="band-btn" id="bpMid"  disabled>▶ Mid</button>
+  <button class="band-btn" id="bpHigh" disabled>▶ High</button>
+  <div class="divider"></div>
+  <button class="band-btn" id="bpLM"   disabled>▶ L+M</button>
+  <button class="band-btn" id="bpMH"   disabled>▶ M+H</button>
+  <button class="band-btn" id="bpLH"   disabled>▶ L+H</button>
+  <div class="divider"></div>
+  <button class="band-btn" id="bpLMH"  disabled>▶ L+M+H</button>
+</div>
+
+<div class="canvas-wrap">
+  <canvas id="canvas" width="860" height="380"></canvas>
+</div>
+
+<div class="note-strip" id="noteStrip">음 후보가 여기에 표시됩니다</div>
+<div class="stats-bar"  id="statsBar"></div>
+
+<div class="legend">
+  <div class="legend-item"><div class="sw-line" style="background:#444;"></div><span style="color:#666;">raw</span></div>
+  <div class="legend-item"><div class="sw-line" style="background:#c89030;"></div><span style="color:#907028;">clean</span></div>
+  <div class="legend-item"><div class="sw-line" style="background:#4a9edd;"></div><span style="color:#3a7aaa;">smooth</span></div>
+  <div class="legend-item"><div class="sw-line" style="background:#cc4444; height:3px;"></div><span style="color:#883333;">잔상 (필터 수정분)</span></div>
+  <div class="legend-item">
+    <div class="sw-box" style="background:rgba(200,150,40,0.15); border-color:rgba(200,150,40,0.3);"></div>
+    <span style="color:#706030;">음 후보 (segment)</span>
+  </div>
+  <div class="legend-item"><div class="sw-dot" style="background:#c89030; opacity:0.7;"></div><span style="color:#705020;">repPitch (median)</span></div>
+</div>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════════
+//  상수 — 튜닝 값 분리
+// ═══════════════════════════════════════════════════════
+
+const EXTRACT_PRESET = {
+  confThreshold: 0.4,
+  rmsThreshold:  0.015,
+  pitchMinHz:    70,
+  pitchMaxHz:    1000,
+};
+
+const BAND_PRESETS = {
+  low:  { pitchMinHz:  60, pitchMaxHz:  260, bpLo:  50, bpHi:  300, color: '#40c060' },
+  mid:  { pitchMinHz: 240, pitchMaxHz: 1050, bpLo: 200, bpHi: 1100, color: '#a060e0' },
+  high: { pitchMinHz: 480, pitchMaxHz: 3000, bpLo: 380, bpHi: 3200, color: '#e09040' },
+};
+const _bandVis   = { low: true, mid: true, high: true };
+const _bandVol   = { low: 0.7, mid: 0.7, high: 0.7 };
+const _bandGains = {};
+let   _blurDepth = 0;    // 0-100 (wet%)
+let   _blurTime  = 40;   // 5-100 → decay 0.5-5s
+
+// 합성 reverb IR — pre-delay + exponential decay noise + tail warmup
+function buildReverbIR(actx) {
+  const decaySec  = 0.5 + (_blurTime / 100) * 4.5;   // 0.5–5.0s
+  const predelayS = 0.018;                             // 18ms pre-delay
+  const sr        = actx.sampleRate;
+  const preLen    = Math.round(predelayS * sr);
+  const bodyLen   = Math.ceil(decaySec * sr);
+  const ir        = actx.createBuffer(2, preLen + bodyLen, sr);
+
+  for (let ch = 0; ch < 2; ch++) {
+    const d = ir.getChannelData(ch);
+    for (let i = 0; i < preLen; i++) d[i] = 0;
+    for (let i = 0; i < bodyLen; i++) {
+      const t    = i / bodyLen;
+      // 지수 감쇠 + 약간의 초기 빌드업 (감정선 부드럽게)
+      const env  = Math.pow(1 - t, 1.4) * Math.exp(-3.5 * t);
+      // 좌우 채널 독립 난수 → 스테레오 확산
+      d[preLen + i] = (Math.random() * 2 - 1) * env;
+    }
+  }
+  return ir;
+}
+
+// Blur wet path helper — routes src through shared reverb chain; returns extra nodes
+function _applyBlur(actx, src, vol) {
+  if (_blurDepth < 1) return [];
+  const ir    = buildReverbIR(actx);
+  const conv  = actx.createConvolver();
+  conv.buffer = ir;
+  const lp    = actx.createBiquadFilter();
+  lp.type     = 'lowpass'; lp.frequency.value = 3200; lp.Q.value = 0.5;
+  const wet   = actx.createGain();
+  wet.gain.value = _blurDepth / 100;
+  conv.connect(lp); lp.connect(wet); wet.connect(actx.destination);
+  const send  = actx.createGain();
+  send.gain.value = vol;
+  src.connect(send); send.connect(conv);
+  return [send, conv, wet];
+}
+
+const PREPROCESS_PRESET = {
+  confThreshold: 0.6,
+  maxJumpCents:  600,
+};
+
+const PLANE_FILTER_PRESET = {
+  spikeReturnMs:      80,
+  emotionalMinMs:    120,
+  spikeMaxCents:      50,
+  emotionalMinCents: 100,
+  noiseMaxPoints:      2,
+  emotionalMinPoints:  3,
+  protectedMinPoints:  5,
+};
+
+const SEGMENT_PRESET = {
+  maxGapMs:               60,   // 이 이상 시간 간격 → 무조건 경계
+  pitchVelocityThreshold:  5,   // cents/ms — emotional/protected 외 구간에서 초과 시 경계
+  minSegmentMs:           80,   // 이 미만 구간은 버림
+  boundaryTrimRatio:      0.10, // 대표 pitch 계산 시 양 끝 10% 제외
+};
+
+const MAX_DURATION_SEC = 30;
+const FRAME_SIZE       = 2048;
+const HOP_MS           = 20;
+
+// ═══════════════════════════════════════════════════════
+//  MIDI 유틸
+// ═══════════════════════════════════════════════════════
+
+const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+
+function centsToMidi(cents)  { return Math.round(69 + cents / 100); }
+function midiToCents(midi)   { return (midi - 69) * 100; }
+function midiToName(midi) {
+  return NOTE_NAMES[((midi % 12) + 12) % 12] + (Math.floor(midi / 12) - 1);
+}
+
+// ═══════════════════════════════════════════════════════
+//  피치 감지 (자기상관법)
+// ═══════════════════════════════════════════════════════
+
+// biquad 필터 — 직접 계수 계산 후 샘플 단위 적용
+function _biquadPass(pcm, b0, b1, b2, a1, a2) {
+  const out = new Float32Array(pcm.length);
+  let x1=0, x2=0, y1=0, y2=0;
+  for (let i=0; i<pcm.length; i++) {
+    const x0=pcm[i], y0=b0*x0+b1*x1+b2*x2-a1*y1-a2*y2;
+    out[i]=y0; x2=x1; x1=x0; y2=y1; y1=y0;
+  }
+  return out;
+}
+function _highpass(pcm, sr, hz, Q=0.707) {
+  const w=2*Math.PI*hz/sr, c=Math.cos(w), s=Math.sin(w), a=s/(2*Q), a0=1+a;
+  return _biquadPass(pcm, (1+c)/(2*a0), -(1+c)/a0, (1+c)/(2*a0), -2*c/a0, (1-a)/a0);
+}
+function _lowpass(pcm, sr, hz, Q=0.707) {
+  const w=2*Math.PI*hz/sr, c=Math.cos(w), s=Math.sin(w), a=s/(2*Q), a0=1+a;
+  return _biquadPass(pcm, (1-c)/(2*a0), (1-c)/a0, (1-c)/(2*a0), -2*c/a0, (1-a)/a0);
+}
+function bandpassPCM(pcm, sr, loHz, hiHz) {
+  return _lowpass(_highpass(pcm, sr, loHz), sr, hiHz);
+}
+
+function detectPitchHz(buf, sampleRate, pitchMinHz, pitchMaxHz) {
+  pitchMinHz = pitchMinHz ?? EXTRACT_PRESET.pitchMinHz;
+  pitchMaxHz = pitchMaxHz ?? EXTRACT_PRESET.pitchMaxHz;
+  const { rmsThreshold, confThreshold } = EXTRACT_PRESET;
+  let rms = 0;
+  for (let i = 0; i < buf.length; i++) rms += buf[i] * buf[i];
+  if (Math.sqrt(rms / buf.length) < rmsThreshold) return null;
+
+  const half      = Math.floor(buf.length / 2);
+  const minPeriod = Math.floor(sampleRate / pitchMaxHz);
+  const maxPeriod = Math.min(Math.floor(sampleRate / pitchMinHz), half - 1);
+
+  const corr = new Float32Array(maxPeriod + 1);
+  for (let lag = 0; lag <= maxPeriod; lag++) {
+    let s = 0;
+    for (let i = 0; i < half; i++) s += buf[i] * buf[i + lag];
+    corr[lag] = s;
+  }
+  let valley = 1;
+  while (valley < maxPeriod && corr[valley] > corr[valley + 1]) valley++;
+
+  if (corr[0] === 0) return null;
+  const lo = Math.max(valley, minPeriod);
+
+  // global max → threshold 기준 설정
+  let globalMax = -Infinity;
+  for (let lag = lo; lag <= maxPeriod; lag++) {
+    if (corr[lag] > globalMax) globalMax = corr[lag];
+  }
+
+  // subharmonic 방지: global max 대신 threshold 이상인 첫 번째 local peak 선택
+  // 2T·3T·4T 같은 배음 주기가 더 높은 corr 값을 가질 때 fundamental T를 놓치는 문제 방지
+  const PEAK_THRESHOLD = 0.85;
+  let bestLag = -1;
+  for (let lag = lo; lag <= maxPeriod - 1; lag++) {
+    if (corr[lag] >= corr[lag - 1] && corr[lag] >= corr[lag + 1]) {
+      if (corr[lag] >= globalMax * PEAK_THRESHOLD) {
+        bestLag = lag;
+        break;
+      }
+    }
+  }
+  // 첫 peak 조건 충족 없으면 global max로 fallback
+  if (bestLag === -1) {
+    for (let lag = lo; lag <= maxPeriod; lag++) {
+      if (corr[lag] === globalMax) { bestLag = lag; break; }
+    }
+  }
+  if (bestLag === -1) return null;
+  const confidence = Math.min(corr[bestLag] / corr[0], 1.0);
+  if (confidence < confThreshold) return null;
+  return { hz: sampleRate / bestLag, confidence };
+}
+
+function hzToCents(hz) { return Math.round(1200 * Math.log2(hz / 440)); }
+
+// ═══════════════════════════════════════════════════════
+//  레이어 생성 — raw / clean / smooth
+// ═══════════════════════════════════════════════════════
+
+function buildRawStroke(pcm, sampleRate) {
+  const hopSize    = Math.round(sampleRate * HOP_MS / 1000);
+  const maxSamples = Math.floor(sampleRate * MAX_DURATION_SEC);
+  const limit      = Math.min(pcm.length, maxSamples);
+  const frame      = new Float32Array(FRAME_SIZE);
+  const pts        = [];
+  for (let offset = 0; offset + FRAME_SIZE <= limit; offset += hopSize) {
+    frame.set(pcm.subarray(offset, offset + FRAME_SIZE));
+    const r = detectPitchHz(frame, sampleRate);
+    if (r) pts.push({
+      time: Math.round(offset / sampleRate * 1000),
+      pitch: hzToCents(r.hz), hz: r.hz, confidence: r.confidence,
+    });
+  }
+  return pts;
+}
+
+// filtered PCM → pitch stroke (밴드패스 계산 분리)
+function _ptsFromFiltered(filtered, sampleRate, preset) {
+  const hopSize    = Math.round(sampleRate * HOP_MS / 1000);
+  const maxSamples = Math.floor(sampleRate * MAX_DURATION_SEC);
+  const limit      = Math.min(filtered.length, maxSamples);
+  const frame      = new Float32Array(FRAME_SIZE);
+  const pts        = [];
+  for (let offset = 0; offset + FRAME_SIZE <= limit; offset += hopSize) {
+    frame.set(filtered.subarray(offset, offset + FRAME_SIZE));
+    const r = detectPitchHz(frame, sampleRate, preset.pitchMinHz, preset.pitchMaxHz);
+    if (r) pts.push({
+      time: Math.round(offset / sampleRate * 1000),
+      pitch: hzToCents(r.hz), hz: r.hz, confidence: r.confidence,
+    });
+  }
+  return pts;
+}
+
+// bandpassPCM 한 번 계산 → pitch stroke(시각화) + PCM(재생) 동시 반환
+function buildAllBands(pcm, sampleRate) {
+  const bandPCM    = {};
+  const bandStrokes = {};
+  for (const [name, preset] of Object.entries(BAND_PRESETS)) {
+    const filtered     = bandpassPCM(pcm, sampleRate, preset.bpLo, preset.bpHi);
+    bandPCM[name]     = filtered;
+    bandStrokes[name] = _ptsFromFiltered(filtered, sampleRate, preset);
+  }
+  return { bandPCM, bandStrokes };
+}
+
+function buildCleanStroke(rawStroke) {
+  const { confThreshold, maxJumpCents } = PREPROCESS_PRESET;
+  const clean = [];
+  for (const pt of rawStroke) {
+    if (pt.confidence < confThreshold) continue;
+    if (clean.length > 0 && Math.abs(pt.pitch - clean[clean.length-1].pitch) > maxJumpCents) continue;
+    clean.push({ ...pt });
+  }
+  return clean;
+}
+
+// smoothStroke를 반환하면서 run 분류도 함께 노출
+const WEIGHTS_STRONG = [1,2,3,2,1];
+const WEIGHTS_LIGHT  = [1,2,1];
+const RUN_PRIORITY   = { spike:1, noise:1, ambiguous:2, emotional:3, protected:4 };
+
+function buildRuns(pts) {
+  if (pts.length < 2) return [];
+  const runs = []; let start = 0, curDir = resolveDir(pts, 0);
+  for (let i = 1; i < pts.length; i++) {
+    const dir = ptDir(pts[i-1], pts[i]);
+    if (dir === 'flat') continue;
+    if (dir !== curDir) { runs.push(makeRun(pts, start, i-1, curDir)); start = i-1; curDir = dir; }
+  }
+  runs.push(makeRun(pts, start, pts.length-1, curDir));
+  return runs;
+}
+function ptDir(a,b)    { return b.pitch>a.pitch?'up':b.pitch<a.pitch?'down':'flat'; }
+function resolveDir(pts,s){ for(let i=s;i<pts.length-1;i++){const d=ptDir(pts[i],pts[i+1]);if(d!=='flat')return d;}return 'flat'; }
+function makeRun(pts,si,ei,dir){
+  return { startIdx:si, endIdx:ei, direction:dir,
+    durationMs:pts[ei].time-pts[si].time,
+    amplitudeCents:Math.abs(pts[ei].pitch-pts[si].pitch),
+    pointCount:ei-si+1 };
+}
+function classifyRun({durationMs:d,amplitudeCents:a,pointCount:n},p){
+  if(n>=p.protectedMinPoints)return 'protected';
+  if(d>=p.emotionalMinMs&&a>=p.emotionalMinCents)return 'emotional';
+  if(d<=p.spikeReturnMs&&a<=p.spikeMaxCents)return 'spike';
+  if(n<=p.noiseMaxPoints)return 'noise';
+  return 'ambiguous';
+}
+function wAvg(pts,c,w){
+  const half=Math.floor(w.length/2); let sum=0,tot=0;
+  for(let i=0;i<w.length;i++){const idx=c-half+i;if(idx<0||idx>=pts.length)continue;sum+=pts[idx].pitch*w[i];tot+=w[i];}
+  return sum/tot;
+}
+
+// 반환: { smoothStroke, classifiedRuns }
+function buildSmoothStroke(cleanStroke) {
+  const p    = PLANE_FILTER_PRESET;
+  const runs = buildRuns(cleanStroke).map(r => ({ ...r, classification: classifyRun(r, p) }));
+
+  if (cleanStroke.length < 2) {
+    return { smoothStroke: cleanStroke.map(pt => ({ ...pt })), classifiedRuns: runs };
+  }
+
+  const out = cleanStroke.map(pt => ({ ...pt }));
+  [...runs]
+    .sort((a,b) => RUN_PRIORITY[a.classification] - RUN_PRIORITY[b.classification])
+    .forEach(run => {
+      for (let i = run.startIdx; i <= run.endIdx; i++) {
+        if (run.classification === 'protected') { out[i] = { ...cleanStroke[i] }; continue; }
+        const w = (run.classification==='spike'||run.classification==='noise') ? WEIGHTS_STRONG : WEIGHTS_LIGHT;
+        out[i] = { ...cleanStroke[i], pitch: wAvg(cleanStroke, i, w) };
+      }
+    });
+
+  return { smoothStroke: out, classifiedRuns: runs };
+}
+
+// ═══════════════════════════════════════════════════════
+//  Stage 1 — Segmentation
+// ═══════════════════════════════════════════════════════
+
+// 각 smoothStroke 점 → 해당 run (없으면 null)
+function buildRunMap(smoothStroke, classifiedRuns) {
+  const map = new Array(smoothStroke.length).fill(null);
+  for (const run of classifiedRuns) {
+    for (let i = run.startIdx; i <= run.endIdx && i < map.length; i++) {
+      map[i] = run;
+    }
+  }
+  return map;
+}
+
+// 경계 인덱스 목록 반환 (V1: gap + velocity만, run 전환 규칙 보류)
+function detectBoundaries(smoothStroke, runMap, preset) {
+  const bounds = new Set([0, smoothStroke.length]);
+
+  for (let i = 1; i < smoothStroke.length; i++) {
+    const dt = smoothStroke[i].time - smoothStroke[i-1].time;
+
+    // 규칙 1: gap
+    if (dt > preset.maxGapMs) {
+      bounds.add(i);
+      continue;
+    }
+
+    // 규칙 2: pitch velocity — emotional/protected 구간은 무시
+    const run           = runMap[i];
+    const isStableRun   = run && (run.classification === 'emotional' || run.classification === 'protected');
+    if (!isStableRun) {
+      const velocity = Math.abs(smoothStroke[i].pitch - smoothStroke[i-1].pitch) / dt;
+      if (velocity > preset.pitchVelocityThreshold) {
+        bounds.add(i);
+      }
+    }
+  }
+
+  return [...bounds].sort((a,b) => a - b);
+}
+
+// 경계 쌍으로 Segment[] 생성
+function buildSegments(smoothStroke, boundaries, runMap, preset) {
+  const segments = [];
+
+  for (let b = 0; b < boundaries.length - 1; b++) {
+    const si = boundaries[b];
+    const ei = boundaries[b + 1] - 1;
+    if (ei < si) continue;
+
+    const points   = smoothStroke.slice(si, ei + 1);
+    const duration = smoothStroke[ei].time - smoothStroke[si].time;
+    if (duration < preset.minSegmentMs) continue;
+
+    const runSet = new Set();
+    for (let i = si; i <= ei; i++) { if (runMap[i]) runSet.add(runMap[i]); }
+
+    segments.push({
+      startIdx:  si,
+      endIdx:    ei,
+      startTime: smoothStroke[si].time,
+      endTime:   smoothStroke[ei].time,
+      duration,
+      points,
+      runRefs:   [...runSet],
+      repPitch:  null,   // Stage 2에서 채워짐
+    });
+  }
+
+  return segments;
+}
+
+// Stage 1 파이프라인 진입점
+function detectSegments(smoothStroke, classifiedRuns) {
+  const runMap  = buildRunMap(smoothStroke, classifiedRuns);
+  const bounds  = detectBoundaries(smoothStroke, runMap, SEGMENT_PRESET);
+  return buildSegments(smoothStroke, bounds, runMap, SEGMENT_PRESET);
+}
+
+// ═══════════════════════════════════════════════════════
+//  Stage 2 — 대표 Pitch (repPitch)
+// ═══════════════════════════════════════════════════════
+
+function median(values) {
+  if (!values.length) return 0;
+  const s   = [...values].sort((a,b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 !== 0 ? s[mid] : (s[mid-1] + s[mid]) / 2;
+}
+
+// 양 끝 ratio 비율 제거 (경계 근처 튐 제외)
+function trimBoundary(points, ratio) {
+  const trim = Math.floor(points.length * ratio);
+  if (trim * 2 >= points.length) return points;
+  return points.slice(trim, points.length - trim);
+}
+
+function computeRepPitch(segment) {
+  const trimmed = trimBoundary(segment.points, SEGMENT_PRESET.boundaryTrimRatio);
+  const src     = trimmed.length > 0 ? trimmed : segment.points;
+  return median(src.map(p => p.pitch));
+}
+
+// segments를 수정하지 않고 repPitch가 채워진 새 배열 반환
+function enrichSegments(segments) {
+  return segments.map(seg => ({ ...seg, repPitch: computeRepPitch(seg) }));
+}
+
+// ═══════════════════════════════════════════════════════
+//  Stage 3 — Quantization
+// ═══════════════════════════════════════════════════════
+
+function quantizeSegment(segment) {
+  const midiNote  = centsToMidi(segment.repPitch);
+  const snapError = Math.round(segment.repPitch - midiToCents(midiNote));
+  return { ...segment, midiNote, noteName: midiToName(midiNote), snapError };
+}
+
+function buildNoteCandidates(segments) {
+  return segments.map(quantizeSegment);
+}
+
+// ── 파이프라인 진입점 ──────────────────────────────────
+function createNoteCandidates(smoothStroke, classifiedRuns) {
+  const segments = detectSegments(smoothStroke, classifiedRuns);
+  const enriched = enrichSegments(segments);
+  return buildNoteCandidates(enriched);
+}
+
+/*
+  [보존] 구 detectNoteCandidates — segmentation+quantization 비분리 임시 구현
+  function detectNoteCandidates(cleanStroke) { ... }
+*/
+
+// ═══════════════════════════════════════════════════════
+//  오디오 파일 처리
+// ═══════════════════════════════════════════════════════
+
+function toMono(audioBuffer) {
+  const ch0 = audioBuffer.getChannelData(0);
+  if (audioBuffer.numberOfChannels === 1) return new Float32Array(ch0);
+  const ch1 = audioBuffer.getChannelData(1);
+  const mono = new Float32Array(ch0.length);
+  for (let i = 0; i < ch0.length; i++) mono[i] = (ch0[i] + ch1[i]) * 0.5;
+  return mono;
+}
+
+// ═══════════════════════════════════════════════════════
+//  WAV 내보내기
+// ═══════════════════════════════════════════════════════
+
+function audioBufferToWav(buffer) {
+  const sr   = buffer.sampleRate;
+  const data = buffer.getChannelData(0);  // mono
+  const len  = data.length;
+  const wav  = new ArrayBuffer(44 + len * 2);
+  const v    = new DataView(wav);
+  const str  = (off, s) => { for (let i=0;i<s.length;i++) v.setUint8(off+i, s.charCodeAt(i)); };
+  str(0,'RIFF'); v.setUint32(4, 36+len*2, true); str(8,'WAVE');
+  str(12,'fmt '); v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,sr,true); v.setUint32(28,sr*2,true); v.setUint16(32,2,true); v.setUint16(34,16,true);
+  str(36,'data'); v.setUint32(40, len*2, true);
+  for (let i=0; i<len; i++) {
+    const s = Math.max(-1, Math.min(1, data[i]));
+    v.setInt16(44+i*2, s<0 ? s*0x8000 : s*0x7FFF, true);
+  }
+  return new Blob([wav], { type: 'audio/wav' });
+}
+
+function saveWav() {
+  if (!window._audioBuffer) return;
+  const blob = audioBufferToWav(window._audioBuffer);
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'melody-sketch-' + Date.now() + '.wav';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
+}
+
+function playHum() {
+  if (!window._audioBuffer) return;
+  stopPlayback();
+  const actx = getActx();
+  const src  = actx.createBufferSource();
+  src.buffer = window._audioBuffer;
+  src.connect(actx.destination);
+  src.onended = stopPlayback;
+  src.start();
+  _playNodes = [src];
+  setActive('btnPlayHum');
+}
+
+// ═══════════════════════════════════════════════════════
+//  마이크 녹음
+// ═══════════════════════════════════════════════════════
+
+let _mediaRecorder = null;
+let _recChunks     = [];
+
+async function toggleRecording() {
+  if (_mediaRecorder && _mediaRecorder.state === 'recording') {
+    _mediaRecorder.stop();
+    return;
+  }
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: false,  // 음악 녹음 — 에코 제거 off
+        noiseSuppression: false,
+        autoGainControl:  false,
+      }
+    });
+  } catch(e) {
+    setStatus('마이크 접근 실패: ' + e.message, 'err'); return;
+  }
+
+  // iOS Safari: audio/mp4, Chrome: audio/webm;codecs=opus
+  const mimeType =
+    MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' :
+    MediaRecorder.isTypeSupported('audio/mp4')              ? 'audio/mp4' :
+                                                              'audio/webm';
+
+  _recChunks     = [];
+  _mediaRecorder = new MediaRecorder(stream, { mimeType });
+
+  _mediaRecorder.ondataavailable = e => { if (e.data.size > 0) _recChunks.push(e.data); };
+
+  _mediaRecorder.onstop = async () => {
+    stream.getTracks().forEach(t => t.stop());
+    const blob = new Blob(_recChunks, { type: mimeType });
+    const ab   = await blob.arrayBuffer();
+    const btn  = document.getElementById('btnRecord');
+    btn.textContent = '● 녹음';
+    btn.classList.remove('recording');
+    await processAudioBuffer(ab, '마이크 녹음');
+  };
+
+  _mediaRecorder.start(100);
+  const btn = document.getElementById('btnRecord');
+  btn.textContent = '■ 중지';
+  btn.classList.add('recording');
+  setStatus('녹음 중… 끝나면 ■ 중지를 누르세요', 'busy');
+}
+
+async function processAudioBuffer(ab, label) {
+  setStatus('디코딩 중…', 'busy');
+  let audioBuffer;
+  try {
+    const tmp = new AudioContext();
+    audioBuffer = await tmp.decodeAudioData(ab);
+    await tmp.close();
+  } catch { setStatus('디코딩 실패 — MP3 / WAV / WebM을 사용하세요', 'err'); return; }
+
+  setStatus('피치 추출 중…', 'busy');
+  await new Promise(r => setTimeout(r, 0));
+  const clipped   = audioBuffer.duration > MAX_DURATION_SEC;
+  const mono      = toMono(audioBuffer);
+  const rawStroke = buildRawStroke(mono, audioBuffer.sampleRate);
+
+  if (rawStroke.length < 4) { setStatus('피치 감지 실패 — 소리가 너무 짧거나 조용합니다', 'err'); return; }
+
+  const cleanStroke                    = buildCleanStroke(rawStroke);
+  const { smoothStroke, classifiedRuns } = buildSmoothStroke(cleanStroke);
+  const noteCands                      = createNoteCandidates(smoothStroke, classifiedRuns);
+
+  setStatus('밴드 분석 중…', 'busy');
+  await new Promise(r => setTimeout(r, 0));
+  const { bandPCM, bandStrokes } = buildAllBands(mono, audioBuffer.sampleRate);
+
+  const sec = (rawStroke[rawStroke.length-1].time / 1000).toFixed(1);
+  setStatus(`${label}  |  ${sec}s` + (clipped ? '  (30초↑ 생략)' : ''), 'done');
+
+  window._audioBuffer = audioBuffer;
+  window._layers  = { rawStroke, cleanStroke, smoothStroke, noteCands };
+  window._bands   = bandStrokes;
+  window._bandPCM = bandPCM;
+  renderAll();
+  ['btnPlayOrig','btnPlayClean','btnPlaySmooth','btnPlayNotes','btnPlayBoth']
+    .forEach(id => { document.getElementById(id).disabled = false; });
+  ['bpLow','bpMid','bpHigh','bpLM','bpMH','bpLH','bpLMH']
+    .forEach(id => { document.getElementById(id).disabled = false; });
+  document.getElementById('btnPlayHum').disabled = false;
+  document.getElementById('btnSaveWav').disabled = false;
+}
+
+async function processFile(file) {
+  setStatus('파일 읽는 중…', 'busy');
+  let ab;
+  try { ab = await file.arrayBuffer(); } catch { setStatus('파일 읽기 실패', 'err'); return; }
+  await processAudioBuffer(ab, file.name);
+}
+
+// ═══════════════════════════════════════════════════════
+//  재생 엔진 — OfflineAudioContext 사전 렌더링 방식
+//  (실시간 스케줄링 타이밍 문제 회피, playOriginal과 동일 경로)
+// ═══════════════════════════════════════════════════════
+
+let _actx      = null;
+let _playNodes = [];
+window._playback  = null;
+window._hlSegIdx  = null;
+
+const GAP_MS = 80;
+const SINE_VOL = 0.7;
+const PLAYBACK_OCTAVE_SHIFT = 1;  // detectPitchHz 첫-피크 방식으로 subharmonic 수정됨
+
+function centsToHz(cents) { return 440 * Math.pow(2, cents / 1200); }
+
+function getActx() {
+  if (!_actx || _actx.state === 'closed') _actx = new AudioContext();
+  if (_actx.state === 'suspended') _actx.resume();
+  return _actx;
+}
+
+const PLAY_BTNS = ['btnPlayOrig','btnPlayClean','btnPlaySmooth','btnPlayNotes','btnPlayBoth','btnPlayHum'];
+const BAND_BTNS = ['bpLow','bpMid','bpHigh','bpLM','bpMH','bpLH','bpLMH'];
+
+function stopPlayback() {
+  // onended를 먼저 null — stop() 이후 비동기 cascade 방지
+  _playNodes.forEach(n => { try { n.onended = null; } catch {} });
+  _playNodes.forEach(n => {
+    try { n.stop(0); } catch {}
+    try { n.disconnect(); } catch {}
+  });
+  _playNodes = [];
+  Object.keys(_bandGains).forEach(k => { delete _bandGains[k]; });
+  window._playback = null;
+  window._hlSegIdx = null;
+  document.getElementById('btnStop').disabled = true;
+  PLAY_BTNS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('active-orig', 'active-notes');
+  });
+  BAND_BTNS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('bp-active');
+  });
+  renderAll();
+}
+
+function playBandSet(names, btnId) {
+  if (!window._bandPCM) return;
+  stopPlayback();
+  const actx   = getActx();
+  const origSR = window._audioBuffer.sampleRate;
+  const wet    = _blurDepth / 100;
+  const dry    = 1.0;
+  let   maxDur = 0;
+  const nodes  = [];
+
+  // 공유 리버브 체인: convolver → warmup LP → wetOut
+  let convolver = null, wetOut = null;
+  if (wet > 0.01) {
+    const ir    = buildReverbIR(actx);
+    convolver   = actx.createConvolver();
+    convolver.buffer = ir;
+    // 리버브 꼬리 warmup: 고음 감쇠로 감정적 따뜻함 부여
+    const lp    = actx.createBiquadFilter();
+    lp.type     = 'lowpass';
+    lp.frequency.value = 3200;
+    lp.Q.value         = 0.5;
+    wetOut      = actx.createGain();
+    wetOut.gain.value = wet;
+    convolver.connect(lp);
+    lp.connect(wetOut);
+    wetOut.connect(actx.destination);
+  }
+
+  names.forEach(name => {
+    const pcmData = window._bandPCM[name];
+    if (!pcmData) return;
+
+    const buf = actx.createBuffer(1, pcmData.length, origSR);
+    buf.getChannelData(0).set(pcmData);
+    maxDur = Math.max(maxDur, buf.duration);
+
+    const src     = actx.createBufferSource();
+    const dryGain = actx.createGain();
+    src.buffer         = buf;
+    dryGain.gain.value = dry * _bandVol[name];
+
+    // Dry 경로
+    src.connect(dryGain);
+    dryGain.connect(actx.destination);
+
+    // Wet 경로 (blur)
+    if (convolver) {
+      const sendGain = actx.createGain();
+      sendGain.gain.value = _bandVol[name];
+      src.connect(sendGain);
+      sendGain.connect(convolver);
+    }
+
+    src.start(0);
+    nodes.push(src);
+    _bandGains[name] = dryGain;
+  });
+
+  if (!nodes.length) return;
+  nodes[0].onended = () => stopPlayback();
+  _playNodes = nodes;
+
+  window._playback = {
+    wallStart: performance.now(),
+    startMs:   0,
+    endMs:     maxDur * 1000 + 300,
+    noteCands: null,
+  };
+  document.getElementById('btnStop').disabled = false;
+  const el = document.getElementById(btnId);
+  if (el) el.classList.add('bp-active');
+  requestAnimationFrame(tickPlayback);
+}
+
+function setActive(btnId) {
+  document.getElementById('btnStop').disabled = false;
+  const el = document.getElementById(btnId);
+  if (el) el.classList.add(btnId === 'btnPlayOrig' ? 'active-orig' : 'active-notes');
+}
+
+// ── 직접 샘플 합성 헬퍼 ──────────────────────────────
+//  OfflineAudioContext automation 대신 Float32Array 직접 계산.
+//  Math.sin 루프가 느려 보이지만 10초 분량 ~200ms 이내로 완료된다.
+
+const SR   = 44100;
+const FADE = Math.round(0.012 * SR);  // 12ms 페이드
+
+function makeBuffer(data) {
+  const actx = getActx();
+  const buf  = actx.createBuffer(1, data.length, SR);
+  buf.getChannelData(0).set(data);
+  return buf;
+}
+
+// stroke 피치 곡선 → AudioBuffer (연속 sine, gap 구간 무음)
+function renderStrokeBuffer(stroke) {
+  const t0       = stroke[0].time;
+  const totalMs  = Math.max(stroke[stroke.length-1].time - t0, 100);
+  const nSamples = Math.ceil(totalMs / 1000 * SR);
+  const data     = new Float32Array(nSamples);
+  let   phase    = 0;
+
+  for (let i = 0; i < stroke.length - 1; i++) {
+    const p0  = stroke[i];
+    const p1  = stroke[i + 1];
+    const dt  = p1.time - p0.time;
+    const s0  = Math.round((p0.time - t0) / 1000 * SR);
+    const s1  = Math.round((p1.time - t0) / 1000 * SR);
+    const len = Math.max(s1 - s0, 1);
+    const hz0 = centsToHz(p0.pitch);
+    const hz1 = centsToHz(p1.pitch);
+
+    if (dt > GAP_MS) {
+      const pbHz0 = hz0 * PLAYBACK_OCTAVE_SHIFT;
+      for (let j = 0; j < FADE && s0 + j < nSamples; j++) {
+        data[s0 + j] = SINE_VOL * (1 - j / FADE) * Math.sin(phase);
+        phase += 2 * Math.PI * pbHz0 / SR;
+      }
+      phase = 0;
+      continue;
+    }
+
+    for (let j = 0; j < len && s0 + j < nSamples; j++) {
+      const detHz = hz0 + (hz1 - hz0) * (j / len);
+      const pbHz  = detHz * PLAYBACK_OCTAVE_SHIFT;
+      const gi    = s0 + j;
+      let   vol   = SINE_VOL;
+      if (gi < FADE) vol *= gi / FADE;
+      data[gi]  = vol * Math.sin(phase);
+      phase    += 2 * Math.PI * pbHz / SR;
+      if (phase > Math.PI * 2) phase -= Math.PI * 2;
+    }
+  }
+
+  if (stroke.length > 0) {
+    const lp    = stroke[stroke.length - 1];
+    const ls    = Math.round((lp.time - t0) / 1000 * SR);
+    const pbHz  = centsToHz(lp.pitch) * PLAYBACK_OCTAVE_SHIFT;
+    for (let j = 0; j < FADE && ls + j < nSamples; j++) {
+      data[ls + j] = SINE_VOL * (1 - j / FADE) * Math.sin(phase);
+      phase += 2 * Math.PI * pbHz / SR;
+    }
+  }
+
+  // ── 버퍼 생성 ─────────────────────────────────────
+  const buf = makeBuffer(data);
+  const ch  = buf.getChannelData(0);
+
+  // ── 진단 로그 ─────────────────────────────────────
+  let peak = 0, rmsSum = 0;
+  let minHz = Infinity, maxHz = -Infinity, hzSum = 0;
+  for (const pt of stroke) {
+    const hz = centsToHz(pt.pitch);
+    if (hz < minHz) minHz = hz;
+    if (hz > maxHz) maxHz = hz;
+    hzSum += hz;
+  }
+  for (let i = 0; i < ch.length; i++) {
+    const v = Math.abs(ch[i]);
+    if (v > peak) peak = v;
+    rmsSum += ch[i] * ch[i];
+  }
+  const rms = Math.sqrt(rmsSum / ch.length);
+
+  console.group('[renderStrokeBuffer] 진단');
+  console.log(`  points      : ${stroke.length}`);
+  console.log(`  totalMs     : ${totalMs}  nSamples : ${nSamples}`);
+  console.log(`  peak        : ${peak.toFixed(5)}  (0이면 묵음)`);
+  console.log(`  rms         : ${rms.toFixed(5)}`);
+  console.log(`  detectedHz  : min=${minHz.toFixed(1)}  max=${maxHz.toFixed(1)}  avg=${(hzSum/stroke.length).toFixed(1)}`);
+  console.log(`  playbackHz  : min=${(minHz*PLAYBACK_OCTAVE_SHIFT).toFixed(1)}  max=${(maxHz*PLAYBACK_OCTAVE_SHIFT).toFixed(1)}  avg=${(hzSum/stroke.length*PLAYBACK_OCTAVE_SHIFT).toFixed(1)}  (×${PLAYBACK_OCTAVE_SHIFT})`);
+  console.groupEnd();
+
+  return buf;
+}
+
+// 음 후보 배열 → AudioBuffer (계단식 sine, 각 segment 독립)
+function renderNotesBuffer(nc) {
+  const t0       = nc[0].startTime;
+  const totalMs  = Math.max(nc[nc.length-1].endTime - t0, 100);
+  const nSamples = Math.ceil(totalMs / 1000 * SR);
+  const data     = new Float32Array(nSamples);
+
+  for (const seg of nc) {
+    const s0      = Math.round((seg.startTime - t0) / 1000 * SR);
+    const s1      = Math.round((seg.endTime   - t0) / 1000 * SR);
+    const len     = Math.max(s1 - s0, 1);
+    const detHz   = centsToHz(seg.repPitch);
+    const pbHz    = detHz * PLAYBACK_OCTAVE_SHIFT;
+    let   ph      = 0;
+    for (let j = 0; j < len && s0 + j < nSamples; j++) {
+      let vol = SINE_VOL;
+      if (j < FADE)       vol *= j / FADE;
+      if (j > len - FADE) vol *= (len - j) / FADE;
+      data[s0 + j] = vol * Math.sin(ph);
+      ph += 2 * Math.PI * pbHz / SR;
+    }
+  }
+
+  // 첫 3개 segment 진단
+  nc.slice(0, 3).forEach((seg, i) => {
+    const detHz = centsToHz(seg.repPitch);
+    console.log(`  [seg${i}] detectedHz=${detHz.toFixed(1)}  playbackHz=${(detHz*PLAYBACK_OCTAVE_SHIFT).toFixed(1)}  dur=${seg.duration}ms`);
+  });
+  console.log(`[renderNotesBuffer] segs=${nc.length} totalMs=${totalMs} nSamples=${nSamples} octaveShift=×${PLAYBACK_OCTAVE_SHIFT}`);
+  return makeBuffer(data);
+}
+
+// 렌더링된 버퍼를 playback 상태와 함께 재생
+function startBufPlayback(buf, btnId, startMs, vol, noteCands) {
+  if (!buf) { console.error('[startBufPlayback] buf is null/undefined'); setStatus('버퍼 없음', 'err'); return; }
+  console.log(`[startBufPlayback] btnId=${btnId} duration=${buf.duration.toFixed(3)}s sampleRate=${buf.sampleRate} vol=${vol}`);
+
+  const actx = getActx();
+  console.log(`[startBufPlayback] AudioContext state=${actx.state} currentTime=${actx.currentTime.toFixed(3)}`);
+
+  const src  = actx.createBufferSource();
+  const gn   = actx.createGain();
+  src.buffer    = buf;
+  gn.gain.value = vol;
+  src.connect(gn);
+  gn.connect(actx.destination);
+
+  src.onended = () => {
+    console.log(`[startBufPlayback] ★ onended — 재생 종료 (duration=${buf.duration.toFixed(2)}s)`);
+    stopPlayback();
+  };
+
+  console.log(`[startBufPlayback] gain.value=${gn.gain.value}  buf.duration=${buf.duration.toFixed(3)}s  actx.state=${actx.state}`);
+  src.start();
+  console.log(`[startBufPlayback] ★ src.start() 호출됨`);
+  _playNodes = [src, gn, ..._applyBlur(actx, src, vol)];
+
+  window._playback = {
+    wallStart: performance.now(),
+    startMs,
+    endMs: startMs + buf.duration * 1000 + 300,
+    noteCands: noteCands || null,
+  };
+  setActive(btnId);
+  requestAnimationFrame(tickPlayback);
+}
+
+// ── 재생 함수들 ───────────────────────────────────────
+
+function playOriginal() {
+  stopPlayback();
+  const ab = window._audioBuffer;
+  if (!ab) return;
+  const actx = getActx();
+  const src  = actx.createBufferSource();
+  src.buffer = ab;
+  src.connect(actx.destination);
+  src.start();
+  src.onended = stopPlayback;
+  _playNodes = [src, ..._applyBlur(actx, src, 1.0)];
+  setActive('btnPlayOrig');
+}
+
+function playStroke(stroke, btnId) {
+  stopPlayback();
+  if (!stroke || stroke.length < 2) { console.warn('[playStroke] stroke too short:', stroke?.length); return; }
+
+  // ── 피치 진단 ────────────────────────────────────────
+  {
+    const pitches = stroke.map(p => p.pitch);
+    const minP = Math.min(...pitches), maxP = Math.max(...pitches);
+    const minHz = centsToHz(minP), maxHz = centsToHz(maxP);
+    const minMidi = centsToMidi(minP), maxMidi = centsToMidi(maxP);
+
+    console.group('[playStroke] 피치 진단');
+    console.log(`  pitch(cents) : min=${minP}  max=${maxP}`);
+    console.log(`  hz range     : min=${minHz.toFixed(1)}Hz  max=${maxHz.toFixed(1)}Hz`);
+    console.log(`  midi range   : min=${minMidi}(${midiToName(minMidi)})  max=${maxMidi}(${midiToName(maxMidi)})`);
+
+    // Hz → MIDI → Hz round-trip 오차 확인
+    const rtHz   = centsToHz(minP);
+    const rtMidi = centsToMidi(minP);
+    const rtBack = centsToHz(midiToCents(rtMidi));
+    console.log(`  round-trip   : ${rtHz.toFixed(2)}Hz → midi${rtMidi}(${midiToName(rtMidi)}) → ${rtBack.toFixed(2)}Hz  (차이 ${Math.abs(rtHz - rtBack).toFixed(2)}Hz)`);
+
+    // 옥타브 오류 체크: 실제 음보다 1~2 옥타브 낮으면 검출 오류 가능성
+    console.log(`  옥타브 확인  : avg midi=${Math.round(minMidi + (maxMidi-minMidi)/2)}  → ${midiToName(Math.round(minMidi + (maxMidi-minMidi)/2))}`);
+    console.log(`  한 옥타브 위 : avg midi=${Math.round(minMidi + (maxMidi-minMidi)/2) + 12}  → ${midiToName(Math.round(minMidi + (maxMidi-minMidi)/2) + 12)}`);
+    console.log(`  두 옥타브 위 : avg midi=${Math.round(minMidi + (maxMidi-minMidi)/2) + 24}  → ${midiToName(Math.round(minMidi + (maxMidi-minMidi)/2) + 24)}`);
+
+    console.log('  --- 첫 5개 포인트 ---');
+    for (let i = 0; i < Math.min(5, stroke.length); i++) {
+      const pt   = stroke[i];
+      const hz   = centsToHz(pt.pitch);
+      const midi = centsToMidi(pt.pitch);
+      console.log(`  [${i}] ${pt.pitch}¢ → ${hz.toFixed(2)}Hz → midi${midi}(${midiToName(midi)})`);
+    }
+    console.groupEnd();
+  }
+
+  const buf = renderStrokeBuffer(stroke);
+  console.log('[playStroke] buf created:', buf ? `duration=${buf.duration.toFixed(3)}s length=${buf.length}` : 'NULL');
+
+  const actx = getActx();
+  console.log('[playStroke] AudioContext state:', actx.state, 'currentTime:', actx.currentTime.toFixed(3));
+
+  startBufPlayback(buf, btnId, stroke[0].time, 1.0, null);
+}
+
+function playNoteCandidates() {
+  const nc = window._layers?.noteCands;
+  if (!nc?.length) { console.warn('[playNoteCandidates] no noteCands'); return; }
+  stopPlayback();
+  const buf = renderNotesBuffer(nc);
+  startBufPlayback(buf, 'btnPlayNotes', nc[0].startTime, 1.0, nc);
+}
+
+function playBoth() {
+  const layers = window._layers;
+  if (!layers?.cleanStroke?.length) return;
+  stopPlayback();
+
+  const actx = getActx();
+  const nc   = layers.noteCands;
+  const t0ms = nc?.[0]?.startTime ?? layers.cleanStroke[0].time;
+
+  // 공유 리버브 체인
+  let conv = null;
+  if (_blurDepth > 0) {
+    const ir    = buildReverbIR(actx);
+    conv        = actx.createConvolver();
+    conv.buffer = ir;
+    const lp    = actx.createBiquadFilter();
+    lp.type     = 'lowpass'; lp.frequency.value = 3200; lp.Q.value = 0.5;
+    const wet   = actx.createGain();
+    wet.gain.value = _blurDepth / 100;
+    conv.connect(lp); lp.connect(wet); wet.connect(actx.destination);
+  }
+
+  function connectBuf(buf, vol) {
+    const src = actx.createBufferSource();
+    const gn  = actx.createGain();
+    src.buffer = buf; gn.gain.value = vol;
+    src.connect(gn); gn.connect(actx.destination);
+    if (conv) {
+      const s = actx.createGain(); s.gain.value = vol;
+      src.connect(s); s.connect(conv);
+    }
+    src.start();
+    return src;
+  }
+
+  const bufs = [], srcs = [];
+  if (layers.cleanStroke?.length  >= 2) { const b = renderStrokeBuffer(layers.cleanStroke);  bufs.push(b); srcs.push(connectBuf(b, 0.40)); }
+  if (layers.smoothStroke?.length >= 2) { const b = renderStrokeBuffer(layers.smoothStroke); bufs.push(b); srcs.push(connectBuf(b, 0.50)); }
+  if (nc?.length)                        { const b = renderNotesBuffer(nc);                   bufs.push(b); srcs.push(connectBuf(b, 0.60)); }
+  if (!srcs.length) return;
+
+  srcs[0].onended = stopPlayback;
+  const maxDur = Math.max(...bufs.map(b => b.duration));
+  _playNodes   = srcs;
+  window._playback = {
+    wallStart: performance.now(),
+    startMs:   t0ms,
+    endMs:     t0ms + maxDur * 1000 + 300,
+    noteCands: nc ?? null,
+  };
+  setActive('btnPlayBoth');
+  requestAnimationFrame(tickPlayback);
+}
+
+// ── 440Hz 테스트 톤 (진단용) ──────────────────────────
+// OfflineAudioContext → BufferSourceNode 경로가 작동하는지 확인
+async function playTestTone() {
+  stopPlayback();
+  console.log('[testTone] start');
+  try {
+    const SR  = 44100;
+    const dur = 2.0;
+    const off = new OfflineAudioContext(1, Math.ceil(dur * SR), SR);
+    const osc = off.createOscillator();
+    const gn  = off.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 440;
+    gn.gain.setValueAtTime(0, 0);
+    gn.gain.linearRampToValueAtTime(0.7, 0.02);
+    gn.gain.setValueAtTime(0.7, dur - 0.02);
+    gn.gain.linearRampToValueAtTime(0, dur);
+    osc.connect(gn); gn.connect(off.destination);
+    osc.start(0); osc.stop(dur);
+    const buf = await off.startRendering();
+    console.log(`[testTone] rendered: duration=${buf.duration}s length=${buf.length}`);
+
+    const actx = getActx();
+    console.log(`[testTone] actx state=${actx.state}`);
+    const src  = actx.createBufferSource();
+    src.buffer = buf;
+    src.connect(actx.destination);
+    src.onended = () => { console.log('[testTone] onended'); stopPlayback(); };
+    src.start();
+    console.log('[testTone] src.start() called');
+    _playNodes = [src];
+    setActive('btnTest');
+    document.getElementById('btnStop').disabled = false;
+  } catch(e) {
+    console.error('[testTone] error:', e);
+    setStatus('테스트 오류: ' + e.message, 'err');
+  }
+}
+
+// ── 재생 위치 추적 (performance.now 기준) ─────────────
+function tickPlayback() {
+  const pb = window._playback;
+  if (!pb) return;
+
+  const curMs = pb.startMs + (performance.now() - pb.wallStart);
+  if (curMs > pb.endMs) { stopPlayback(); return; }
+
+  const nc  = pb.noteCands;
+  let   idx = -1;
+  if (nc) {
+    for (let i = 0; i < nc.length; i++) {
+      if (curMs >= nc[i].startTime && curMs <= nc[i].endTime) { idx = i; break; }
+    }
+  }
+  if (window._hlSegIdx !== idx) { window._hlSegIdx = idx; renderAll(); }
+  requestAnimationFrame(tickPlayback);
+}
+
+// ═══════════════════════════════════════════════════════
+//  렌더링
+// ═══════════════════════════════════════════════════════
+
+const canvas = document.getElementById('canvas');
+const ctx    = canvas.getContext('2d');
+const PAD    = { top:28, right:32, bottom:32, left:68 };
+let CW       = canvas.width  - PAD.left - PAD.right;
+let CH       = canvas.height - PAD.top  - PAD.bottom;
+
+function resizeCanvas() {
+  const w = canvas.parentElement.clientWidth;
+  if (w < 10) return;
+  canvas.width = w;
+  CW = canvas.width  - PAD.left - PAD.right;
+  CH = canvas.height - PAD.top  - PAD.bottom;
+  if (window._layers) renderAll();
+}
+window.addEventListener('resize', resizeCanvas);
+
+const layerOn = { raw:true, clean:true, smooth:true, ghost:true, notes:true };
+
+function confDotColor(c) {
+  if (!c) return '#888';
+  if (c >= 0.7) return '#80e0a0';
+  if (c >= 0.5) return '#e0d080';
+  return '#f09090';
+}
+
+function getScales(layers) {
+  const all = [...layers.rawStroke, ...layers.cleanStroke, ...layers.smoothStroke];
+  if (window._bands) {
+    ['low','mid','high'].forEach(name => {
+      if (_bandVis[name] && window._bands[name]) all.push(...window._bands[name]);
+    });
+  }
+  let tMin=Infinity,tMax=-Infinity,pMin=Infinity,pMax=-Infinity;
+  for (const p of all) {
+    if(p.time<tMin)tMin=p.time; if(p.time>tMax)tMax=p.time;
+    if(p.pitch<pMin)pMin=p.pitch; if(p.pitch>pMax)pMax=p.pitch;
+  }
+  pMin = Math.floor(pMin / 100) * 100 - 100;
+  pMax = Math.ceil(pMax  / 100) * 100 + 100;
+  return {
+    tx: t => PAD.left + (t - tMin) / Math.max(tMax - tMin, 1) * CW,
+    ty: p => PAD.top  + (1 - (p - pMin) / (pMax - pMin)) * CH,
+    lo: pMin, hi: pMax,
+  };
+}
+
+function drawMidiGrid(sc) {
+  ctx.font = '9px Consolas,monospace'; ctx.textAlign = 'right';
+  const midiLo = centsToMidi(sc.lo), midiHi = centsToMidi(sc.hi);
+  for (let midi = midiLo; midi <= midiHi; midi++) {
+    const cents = midiToCents(midi);
+    if (cents < sc.lo || cents > sc.hi) continue;
+    const y   = sc.ty(cents);
+    const isC = midiToName(midi).startsWith('C') && !midiToName(midi).startsWith('C#');
+    ctx.strokeStyle = isC ? '#232323' : '#1a1a1a';
+    ctx.lineWidth   = isC ? 1 : 0.5;
+    ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + CW, y); ctx.stroke();
+    ctx.fillStyle   = isC ? '#404040' : '#2a2a2a';
+    ctx.fillText(midiToName(midi), PAD.left - 5, y + 3.5);
+  }
+  ctx.strokeStyle = '#1e1e1e'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(PAD.left, PAD.top); ctx.lineTo(PAD.left, PAD.top + CH);
+  ctx.lineTo(PAD.left + CW, PAD.top + CH); ctx.stroke();
+}
+
+// 음 후보 밴드: quantized 중심 ± 50¢, repPitch 표시
+function drawNoteBands(noteCands, sc) {
+  noteCands.forEach((nc, idx) => {
+    const x    = sc.tx(nc.startTime);
+    const x2   = sc.tx(nc.endTime);
+    const midC = midiToCents(nc.midiNote);
+    const y1   = sc.ty(midC + 50);
+    const y2   = sc.ty(midC - 50);
+    const w    = Math.max(x2 - x, 2);
+    const h    = y2 - y1;
+    const isHl = window._hlSegIdx === idx;   // 현재 재생 중인 segment
+
+    // 배경 박스
+    ctx.fillStyle   = isHl ? 'rgba(200,170,60,0.30)' : 'rgba(200,150,40,0.10)';
+    ctx.strokeStyle = isHl ? 'rgba(220,190,80,0.90)' : 'rgba(200,150,40,0.22)';
+    ctx.lineWidth   = isHl ? 1.5 : 1;
+    ctx.fillRect(x, y1, w, h);
+    ctx.strokeRect(x, y1, w, h);
+
+    // repPitch 점선
+    const repY = sc.ty(nc.repPitch);
+    ctx.strokeStyle = isHl ? 'rgba(240,210,80,0.85)' : 'rgba(200,150,40,0.55)';
+    ctx.lineWidth   = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(x, repY); ctx.lineTo(x + w, repY); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 레이블
+    if (w > 18) {
+      const errStr = nc.snapError !== 0
+        ? ` ${nc.snapError > 0 ? '+' : ''}${nc.snapError}¢`
+        : '';
+      ctx.fillStyle = isHl ? 'rgba(255,220,100,0.95)' : 'rgba(200,150,40,0.75)';
+      ctx.font      = isHl ? 'bold 9px Consolas,monospace' : '9px Consolas,monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(nc.noteName + errStr, x + 3, y1 + 10);
+    }
+  });
+}
+
+function drawFilterGhost(cleanStroke, smoothStroke, sc) {
+  for (let i = 0; i < cleanStroke.length; i++) {
+    const delta = Math.abs(cleanStroke[i].pitch - smoothStroke[i].pitch);
+    if (delta < 1) continue;
+    const x  = sc.tx(cleanStroke[i].time);
+    const y1 = sc.ty(smoothStroke[i].pitch);
+    const y2 = sc.ty(cleanStroke[i].pitch);
+    ctx.fillStyle   = 'rgba(220,60,60,0.5)';
+    ctx.beginPath(); ctx.arc(x, y2, 2.5, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(220,60,60,0.35)';
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath(); ctx.moveTo(x, y1); ctx.lineTo(x, y2); ctx.stroke();
+  }
+}
+
+function drawLine(pts, color, width, alpha, sc) {
+  if (!pts.length) return;
+  ctx.save(); ctx.globalAlpha = alpha;
+  ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = width;
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.moveTo(sc.tx(pts[0].time), sc.ty(pts[0].pitch));
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(sc.tx(pts[i].time), sc.ty(pts[i].pitch));
+  ctx.stroke(); ctx.restore();
+}
+
+function drawDots(pts, colorFn, r, alpha, sc) {
+  ctx.save(); ctx.globalAlpha = alpha;
+  for (const p of pts) {
+    ctx.fillStyle = colorFn(p);
+    ctx.beginPath(); ctx.arc(sc.tx(p.time), sc.ty(p.pitch), r, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function stdDev(pts) {
+  if (!pts.length) return 0;
+  const mean = pts.reduce((s,p)=>s+p.pitch,0)/pts.length;
+  return Math.sqrt(pts.reduce((s,p)=>s+(p.pitch-mean)**2,0)/pts.length);
+}
+
+function updateNoteStrip(noteCands) {
+  if (!noteCands.length) {
+    document.getElementById('noteStrip').textContent = '감지된 음 없음';
+    return;
+  }
+
+  // 고유 음 분포 요약
+  const freq = {};
+  noteCands.forEach(nc => { freq[nc.noteName] = (freq[nc.noteName]||0) + nc.duration; });
+  const summary = Object.entries(freq)
+    .sort((a,b) => b[1] - a[1])
+    .map(([n]) => `<span style="color:#706030">${n}</span>`).join(' · ');
+
+  // 구간 태그 (snapError 포함)
+  const tags = noteCands.map(nc => {
+    const err = nc.snapError !== 0
+      ? ` <span style="color:#806028">${nc.snapError>0?'+':''}${nc.snapError}¢</span>`
+      : '';
+    return `<span class="note-tag${nc.duration<150?' short':''}">` +
+           `${nc.noteName}${err} ` +
+           `<span style="color:#706030">${nc.duration}ms</span></span>`;
+  }).join('');
+
+  document.getElementById('noteStrip').innerHTML =
+    `<span style="color:#555">감지 음:</span> ${summary} ` +
+    `<span style="color:#333">| ${noteCands.length}구간</span><br>${tags}`;
+}
+
+function updateStats(layers) {
+  const { rawStroke:r, cleanStroke:c, smoothStroke:s, noteCands:n } = layers;
+  document.getElementById('statsBar').innerHTML =
+    `<span class="stat-raw">raw ${r.length}pts std${stdDev(r).toFixed(0)}¢</span>` +
+    `<span class="stat-clean">clean ${c.length}pts std${stdDev(c).toFixed(0)}¢ (−${r.length-c.length}pts)</span>` +
+    `<span class="stat-smooth">smooth std${stdDev(s).toFixed(0)}¢</span>` +
+    `<span class="stat-notes">${n.length}구간 / ${[...new Set(n.map(x=>x.noteName))].length}종</span>`;
+}
+
+function renderAll() {
+  const layers = window._layers;
+  if (!layers) return;
+  const { rawStroke, cleanStroke, smoothStroke, noteCands } = layers;
+  const sc = getScales(layers);
+
+  ctx.fillStyle = '#141414';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  drawMidiGrid(sc);
+  if (layerOn.notes)  drawNoteBands(noteCands, sc);
+  if (layerOn.raw)  { drawLine(rawStroke,  '#3a3a3a', 1.2, 0.55, sc); drawDots(rawStroke,  p=>confDotColor(p.confidence), 2,   0.65, sc); }
+  if (layerOn.clean){ drawLine(cleanStroke,'#c89030', 1.8, 0.9,  sc); drawDots(cleanStroke,()=>'#c8a050',                  2.2, 0.9,  sc); }
+  if (layerOn.ghost)  drawFilterGhost(cleanStroke, smoothStroke, sc);
+  if (layerOn.smooth) drawLine(smoothStroke, '#4a9edd', 2.2, 1.0, sc);
+  if (window._bands) {
+    if (_bandVis.low  && window._bands.low)  drawLine(window._bands.low,  BAND_PRESETS.low.color,  1.5, 0.75, sc);
+    if (_bandVis.mid  && window._bands.mid)  drawLine(window._bands.mid,  BAND_PRESETS.mid.color,  1.5, 0.75, sc);
+    if (_bandVis.high && window._bands.high) drawLine(window._bands.high, BAND_PRESETS.high.color, 1.5, 0.75, sc);
+  }
+
+  updateNoteStrip(noteCands);
+  updateStats(layers);
+}
+
+// ═══════════════════════════════════════════════════════
+//  이벤트
+// ═══════════════════════════════════════════════════════
+
+function setStatus(msg, type='') {
+  const el = document.getElementById('status');
+  el.textContent = msg; el.className = 'status'+(type?' '+type:'');
+}
+
+[['btnRaw','raw','on-raw'],['btnClean','clean','on-clean'],
+ ['btnSmooth','smooth','on-smooth'],['btnGhost','ghost','on-ghost'],
+ ['btnNotes','notes','on-notes']].forEach(([id,key,cls]) => {
+  document.getElementById(id).addEventListener('click', function() {
+    layerOn[key] = !layerOn[key];
+    this.classList.toggle(cls, layerOn[key]);
+    renderAll();
+  });
+});
+
+// Band 레이어 ON/OFF 토글
+[['btnBandLow','low','on-band-low'],
+ ['btnBandMid','mid','on-band-mid'],
+ ['btnBandHigh','high','on-band-high']].forEach(([btnId, name, cls]) => {
+  document.getElementById(btnId).addEventListener('click', function() {
+    _bandVis[name] = !_bandVis[name];
+    this.classList.toggle(cls, _bandVis[name]);
+    renderAll();
+  });
+});
+
+// Band 볼륨 슬라이더
+[['volLow','low'],['volMid','mid'],['volHigh','high']].forEach(([sliderId, name]) => {
+  document.getElementById(sliderId).addEventListener('input', function() {
+    _bandVol[name] = this.value / 100;
+    if (_bandGains[name]) _bandGains[name].gain.value = _bandVol[name];
+  });
+});
+
+// Blur 슬라이더 (재생 중에는 다음 재생 시 반영)
+document.getElementById('blurDepth').addEventListener('input', function() {
+  _blurDepth = +this.value;
+});
+document.getElementById('blurTime').addEventListener('input', function() {
+  _blurTime = +this.value;
+});
+
+// Band 재생 버튼
+[['bpLow',['low']],['bpMid',['mid']],['bpHigh',['high']],
+ ['bpLM',['low','mid']],['bpMH',['mid','high']],['bpLH',['low','high']],
+ ['bpLMH',['low','mid','high']]].forEach(([btnId, names]) => {
+  document.getElementById(btnId).addEventListener('click', () => playBandSet(names, btnId));
+});
+
+document.getElementById('btnTest').addEventListener('click', playTestTone);
+document.getElementById('btnPlayOrig').addEventListener('click', playOriginal);
+document.getElementById('btnPlayClean').addEventListener('click', () => playStroke(window._layers?.cleanStroke, 'btnPlayClean'));
+document.getElementById('btnPlaySmooth').addEventListener('click', () => playStroke(window._layers?.smoothStroke, 'btnPlaySmooth'));
+document.getElementById('btnPlayNotes').addEventListener('click', playNoteCandidates);
+document.getElementById('btnPlayBoth').addEventListener('click', playBoth);
+document.getElementById('btnStop').addEventListener('click', stopPlayback);
+
+document.getElementById('btnRecord').addEventListener('click', toggleRecording);
+document.getElementById('btnPlayHum').addEventListener('click', playHum);
+document.getElementById('btnSaveWav').addEventListener('click', saveWav);
+
+const dropzone  = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+dropzone.addEventListener('dragleave', e => { if(!dropzone.contains(e.relatedTarget)) dropzone.classList.remove('drag-over'); });
+dropzone.addEventListener('drop', e => {
+  e.preventDefault(); dropzone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0]; if (f) processFile(f);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) processFile(fileInput.files[0]); fileInput.value='';
+});
+
+resizeCanvas();
+</script>
+</body>
+</html>
